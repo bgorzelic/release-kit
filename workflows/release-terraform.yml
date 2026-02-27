@@ -1,0 +1,151 @@
+# Release Workflow — Terraform / Infrastructure as Code
+#
+# Triggers on GitHub Release or manual dispatch.
+# Jobs: CI gate → social media announcements
+#
+# Note: IaC projects typically don't have a package.json to bump.
+# The version bump step is omitted. Version comes from the git tag.
+#
+# Setup: https://github.com/bgorzelic/release-kit/blob/main/docs/ONBOARDING.md
+
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ─── CI Gate ────────────────────────────────────────────────────────
+  ci-check:
+    name: Verify CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9'           # <<< CUSTOMIZE: your TF version
+
+      - name: Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init -backend=false   # <<< CUSTOMIZE: remove -backend=false if needed
+
+      - name: Validate
+        run: terraform validate
+
+      # <<< CUSTOMIZE: Add tflint, checkov, or other IaC scanners
+      # - name: TFLint
+      #   run: tflint --recursive
+
+  # ─── Social Media Announcements ────────────────────────────────────
+  announce-twitter:
+    name: Post to X/Twitter
+    needs: ci-check
+    if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          HAS_KEY: ${{ secrets.TWITTER_API_KEY }}
+        run: |
+          if [ -z "$HAS_KEY" ]; then
+            echo "::warning::Twitter secrets not configured, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v6
+        if: steps.check.outputs.skip != 'true'
+        with:
+          node-version: '20'
+
+      - name: Compose and post
+        if: steps.check.outputs.skip != 'true'
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          node -e '
+          const crypto = require("crypto");
+          const https = require("https");
+
+          const tweetText = `${process.env.REPO_NAME} ${process.env.RELEASE_TAG} released!\n\nRelease notes: ${process.env.RELEASE_URL}\n\n#buildinpublic #terraform #iac`;
+
+          const method = "POST";
+          const url = "https://api.twitter.com/2/tweets";
+          const consumerKey = process.env.TWITTER_API_KEY;
+          const consumerSecret = process.env.TWITTER_API_SECRET;
+          const accessToken = process.env.TWITTER_ACCESS_TOKEN;
+          const accessSecret = process.env.TWITTER_ACCESS_SECRET;
+
+          function percentEncode(s) {
+            return encodeURIComponent(s).replace(/[!*()\x27]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+          }
+
+          const oauthParams = {
+            oauth_consumer_key: consumerKey,
+            oauth_nonce: crypto.randomBytes(16).toString("hex"),
+            oauth_signature_method: "HMAC-SHA1",
+            oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+            oauth_token: accessToken,
+            oauth_version: "1.0",
+          };
+
+          const paramString = Object.keys(oauthParams).sort()
+            .map(k => percentEncode(k) + "=" + percentEncode(oauthParams[k]))
+            .join("&");
+
+          const sigBase = method + "&" + percentEncode(url) + "&" + percentEncode(paramString);
+          const sigKey = percentEncode(consumerSecret) + "&" + percentEncode(accessSecret);
+          const signature = crypto.createHmac("sha1", sigKey).update(sigBase).digest("base64");
+          oauthParams.oauth_signature = signature;
+
+          const authHeader = "OAuth " + Object.keys(oauthParams).sort()
+            .map(k => percentEncode(k) + "=\"" + percentEncode(oauthParams[k]) + "\"")
+            .join(", ");
+
+          const body = JSON.stringify({ text: tweetText });
+
+          const req = https.request(url, {
+            method,
+            headers: {
+              Authorization: authHeader,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(body),
+            },
+          }, res => {
+            let data = "";
+            res.on("data", chunk => data += chunk);
+            res.on("end", () => {
+              if (res.statusCode === 201) {
+                const id = JSON.parse(data).data?.id;
+                console.log("Tweet posted: https://x.com/i/status/" + id);
+              } else {
+                console.log("Twitter API " + res.statusCode + ": " + data);
+                process.exit(1);
+              }
+            });
+          });
+          req.on("error", e => { console.error(e); process.exit(1); });
+          req.write(body);
+          req.end();
+          '
