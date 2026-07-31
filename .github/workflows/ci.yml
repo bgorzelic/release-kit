@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint (workflow templates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.12
+
+      # SC2016 is ignored: the release templates embed JavaScript via
+      # `node -e '...'`, where ${...} is a JS template literal — the
+      # single quotes are intentional, not a shell-expansion mistake.
+      - name: Lint workflow templates and repo workflows
+        run: ./actionlint -color -ignore 'SC2016:' workflows/*.yml .github/workflows/*.yml
+
+  shellcheck:
+    name: shellcheck (scripts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        run: shellcheck scripts/*.sh
