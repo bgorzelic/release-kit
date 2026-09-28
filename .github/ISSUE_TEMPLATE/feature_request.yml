@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a release workflow, provider, or safety improvement.
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What release problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the trigger, gate, side effects, failure behavior, and recovery path.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Release principles
+      options:
+        - label: The proposal keeps CI as a gate before announcements.
+          required: true
+        - label: External publishing remains opt-in.
+          required: true

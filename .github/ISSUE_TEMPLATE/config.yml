@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and design discussion
+    url: https://github.com/bgorzelic/release-kit/discussions
+    about: Discuss a new stack, provider, or workflow before opening implementation work.
+  - name: Report a vulnerability privately
+    url: https://github.com/bgorzelic/release-kit/security/advisories/new
+    about: Do not disclose workflow-injection or credential issues publicly.

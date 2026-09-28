@@ -1,0 +1,40 @@
+name: Bug report
+description: Report incorrect or unsafe release-kit behavior.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: dropdown
+    id: stack
+    attributes:
+      label: Affected workflow
+      options:
+        - Node.js / TypeScript
+        - Python
+        - Go
+        - Terraform / IaC
+        - Minimal announcement
+        - Onboarding or secret setup
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include sanitized logs and the expected behavior. Never paste credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed tokens, webhook secrets, and private deployment data.
+          required: true
